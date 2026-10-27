@@ -1717,12 +1717,23 @@ with T["📋 Detail & Log"]:
                 "Candidates",
                 "Current_Before",
                 "Current_After",
+                "Tabu_List_Table",
+                "Expired",
+                "Left",
             ],
             errors="ignore",
         )
-
+        if "Tabu_List" in log_df.columns:
+            log_df = log_df.rename(
+                columns={"Tabu_List": "Tabu List (ringkasan)"}
+            )
+            
         with st.expander(f"Iteration log {name}"):
-            st.dataframe(log_df, width="stretch")
+            st.dataframe(
+                log_df,
+                width="stretch",
+                hide_index=True,
+            )
 
         st.download_button(
             f"⬇️ Export iteration log {name}",
