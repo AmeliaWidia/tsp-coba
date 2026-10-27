@@ -16,8 +16,17 @@ import plotly.graph_objects as go
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "src"))
 
-from tsp_core import *
-from tsp_core import local_search  # Explicit import for the Local Search baseline
+from tsp_core import (
+    dist_matrix,
+    insertion,
+    length,
+    local_search,
+    nearest_neighbor,
+    nearest_neighbor_variation,
+    simulated_annealing,
+    tabu_search,
+    variable_neighborhood_search,
+)
 
 MAX_CITIES = 200
 FONT = "Nunito Sans, Plus Jakarta Sans, system-ui, sans-serif"
