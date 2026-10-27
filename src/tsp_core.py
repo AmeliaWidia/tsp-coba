@@ -170,39 +170,154 @@ def move_key(r, m):
 
 # ---------- Local search ----------
 
-def two_opt_ls(r, D, strategy="Best Improvement", max_pass=200):
-    r = r[:]
-    n = len(r)
+def _local_search_candidates(route, D, operator):
+    """Yield (candidate_route, move_description, operator_name) for a neighborhood."""
+    n = len(route)
+    operators = ["2-opt", "3-opt"] if operator == "2-opt + 3-opt" else [operator]
 
-    for _ in range(max_pass):
-        best = (-1e-9, None)
+    for op in operators:
+        if op == "2-opt":
+            # Keep position 0 fixed to avoid redundant cyclic rotations.
+            for i in range(1, n - 1):
+                for j in range(i + 1, n):
+                    candidate = route[:i] + route[i:j + 1][::-1] + route[j + 1:]
+                    yield candidate, f"2-opt (posisi {i + 1}, {j + 1})", op
+        elif op == "3-opt":
+            # Cut three edges between consecutive segments A | B | C | D,
+            # then enumerate the seven non-identity reconnections of B and C.
+            # The closing edge D->A remains part of the tour; k may reach n-1.
+            seen = set()
+            for i in range(0, n - 3):
+                A = route[:i + 1]
+                for j in range(i + 1, n - 2):
+                    B = route[i + 1:j + 1]
+                    for k in range(j + 1, n):
+                        Cseg = route[j + 1:k + 1]
+                        Dseg = route[k + 1:]
+                        variants = [
+                            (B[::-1], Cseg),
+                            (B, Cseg[::-1]),
+                            (B[::-1], Cseg[::-1]),
+                            (Cseg, B),
+                            (Cseg[::-1], B),
+                            (Cseg, B[::-1]),
+                            (Cseg[::-1], B[::-1]),
+                        ]
+                        for left, right in variants:
+                            candidate = A + left + right + Dseg
+                            key = tuple(candidate)
+                            if key == tuple(route) or key in seen:
+                                continue
+                            seen.add(key)
+                            yield candidate, f"3-opt (cut {i + 1}, {j + 1}, {k + 1})", op
+        else:
+            raise ValueError(f"Operator Local Search tidak dikenal: {operator}")
 
-        for i in range(1, n - 1):
-            for j in range(i + 1, n):
-                a, b = r[i - 1], r[i]
-                c, d = r[j], r[(j + 1) % n]
 
-                delta = (
-                    D[a, c] + D[b, d]
-                    - D[a, b] - D[c, d]
-                )
+def local_search(r, D, strategy="First Improvement", operator="2-opt", max_pass=200, return_log=False, max_candidates_per_pass=50000):
+    """Local Search baseline with 2-opt, 3-opt, or combined neighborhoods.
 
-                if delta < best[0]:
-                    best = (delta, (i, j))
+    First Improvement accepts the first improving candidate encountered.
+    Best Improvement scans the selected neighborhood(s) and accepts the best
+    improving candidate. A final log row records the no-improvement stop.
+    """
+    route = list(r)
+    history = [length(route, D)]
+    log = []
+    total_evaluations = 0
+    stop_reason = "Batas iterasi maksimum tercapai"
+    valid_operators = {"2-opt", "3-opt", "2-opt + 3-opt"}
+    if operator not in valid_operators:
+        raise ValueError(f"Operator Local Search tidak dikenal: {operator}")
+    if strategy not in {"First Improvement", "Best Improvement"}:
+        raise ValueError(f"Strategi Local Search tidak dikenal: {strategy}")
 
-                    if strategy == "First Improvement":
-                        break
+    for iteration in range(1, max(0, int(max_pass)) + 1):
+        before = length(route, D)
+        selected = None
+        best_improvement = 1e-12
+        evaluations = 0
+        neighborhood_truncated = False
 
-            if strategy == "First Improvement" and best[1]:
+        for candidate, move_desc, op_name in _local_search_candidates(route, D, operator):
+            if evaluations >= max(1, int(max_candidates_per_pass)):
+                neighborhood_truncated = True
                 break
+            evaluations += 1
+            candidate_dist = length(candidate, D)
+            improvement = before - candidate_dist
+            if improvement > 1e-12:
+                if strategy == "First Improvement":
+                    selected = (candidate, move_desc, op_name, candidate_dist, improvement)
+                    break
+                if improvement > best_improvement:
+                    best_improvement = improvement
+                    selected = (candidate, move_desc, op_name, candidate_dist, improvement)
 
-        if best[1] is None:
+        total_evaluations += evaluations
+        if selected is None:
+            no_move_status = (
+                f"Tidak ada perbaikan dalam {evaluations} kandidat pertama; "
+                "pencarian neighborhood dibatasi demi performa"
+                if neighborhood_truncated else
+                f"Tidak ada perbaikan; optimum lokal {operator}"
+            )
+            log.append({
+                "Iteration": iteration,
+                "Operator": operator,
+                "Distance_Before": round(before, 6),
+                "Distance_After": round(before, 6),
+                "Improvement": 0.0,
+                "Move": "—",
+                "Candidates_Evaluated": evaluations,
+                "Accepted": False,
+                "Status": no_move_status,
+            })
+            history.append(before)
+            stop_reason = (
+                f"Batas kandidat per iterasi tercapai ({evaluations}); belum dapat memastikan optimum lokal"
+                if neighborhood_truncated else
+                f"Optimum lokal terhadap neighborhood {operator}"
+            )
             break
 
-        i, j = best[1]
-        r[i:j + 1] = r[i:j + 1][::-1]
+        candidate, move_desc, op_name, after, improvement = selected
+        route = candidate
+        log.append({
+            "Iteration": iteration,
+            "Operator": op_name,
+            "Distance_Before": round(before, 6),
+            "Distance_After": round(after, 6),
+            "Improvement": round(improvement, 6),
+            "Move": move_desc,
+            "Candidates_Evaluated": evaluations,
+            "Accepted": True,
+            "Status": "Perbaikan diterima",
+        })
+        history.append(after)
 
-    return r
+    result = {
+        "route": route,
+        "dist": length(route, D),
+        "hist": history,
+        "log": log,
+        "iters": len(log),
+        "iterations": len(log),
+        "evaluations": total_evaluations,
+        "stop_reason": stop_reason,
+        "operator": operator,
+        "strategy": strategy,
+        "max_candidates_per_pass": int(max_candidates_per_pass),
+    }
+    return result if return_log else route
+
+
+def two_opt_ls(r, D, strategy="First Improvement", max_pass=200, return_log=False):
+    """Backward-compatible 2-opt-only wrapper around :func:`local_search`."""
+    return local_search(
+        r, D, strategy=strategy, operator="2-opt",
+        max_pass=max_pass, return_log=return_log,
+    )
 
 
 # ---------- Simulated Annealing ----------
@@ -210,11 +325,10 @@ def two_opt_ls(r, D, strategy="Best Improvement", max_pass=200):
 def simulated_annealing(
     r, D, T0=1000, alpha=0.9, Tmin=0.1, per_T=1, max_iter=5000, op="2-opt", seed=0,
 ):
-    """Simulated Annealing: satu kandidat per iterasi, geometric cooling.
+    """Simulated Annealing with geometric cooling every ``per_T`` iterations.
 
-    per_T tetap diterima demi kompatibilitas pemanggil lama, tetapi sengaja
-    diabaikan: tidak ada kontrol 'iterasi per level suhu'. Suhu dijadwalkan
-    agar Tmin tercapai pada batas max_iter.
+    If Tmin is reached before max_iter, the search continues at Tmin until
+    the shared/selected iteration budget is consumed.
     """
     t0 = time.perf_counter()
     rng = np.random.default_rng(seed)
@@ -255,13 +369,14 @@ def simulated_annealing(
                     "Delta": delta, "Accepted": bool(take), "Current_Distance": current_dist,
                     "Best_Distance": best_dist, "Best_Updated": updated,
                     "Worse_Move_Accepted": bool(take and delta > 0)})
-        # Keep the shared iteration budget equal across SA, TS, and VNS.
-        # Once Tmin is reached, SA continues at Tmin until max_iter is consumed.
-        temperature = max(Tmin_actual, temperature * alpha_used)
+        # Cool only after the configured number of iterations at this temperature.
+        # Once Tmin is reached, continue evaluating candidates at Tmin until max_iter.
+        if iteration % max(1, int(per_T)) == 0:
+            temperature = max(Tmin_actual, temperature * alpha_used)
     reason = (
-        "Batas iterasi bersama tercapai; suhu minimum tercapai"
+        "Batas iterasi tercapai; suhu minimum pernah tercapai"
         if temperature <= Tmin_actual
-        else "Batas iterasi bersama tercapai sebelum suhu minimum"
+        else "Batas iterasi tercapai sebelum suhu minimum"
     )
     return {"route": best, "dist": best_dist, "hist": hist, "log": log,
             "iters": iteration, "iterations": iteration, "evaluations": evals,

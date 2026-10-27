@@ -257,3 +257,9 @@ Jalankan kembali **RUN OPTIMIZATION** setelah mengubah data atau parameter agar 
 **Tujuan Proyek**
 
 Proyek ini dikembangkan sebagai sarana pembelajaran dan eksperimen optimasi kombinatorial, dengan fokus pada perbandingan kualitas rute, perilaku konvergensi, waktu komputasi, dan konsistensi hasil dari Simulated Annealing, Tabu Search, dan Variable Neighborhood Search.
+## Catatan konfigurasi eksperimen
+
+- Batas iterasi SA, Tabu Search, dan VNS dapat diatur bersama dari sidebar setelah input data, atau diatur terpisah pada konfigurasi tiap metode.
+- Simulated Annealing memiliki parameter jumlah iterasi pada setiap level suhu. Suhu dikalikan alpha setelah jumlah iterasi tersebut; jika suhu minimum tercapai lebih awal, SA tetap menjalankan kandidat sampai batas iterasi yang dipilih.
+- Local Search (2-opt) selalu tersedia sebagai baseline dan memiliki iteration log. Opsi `Gunakan hasil Local Search sebagai rute awal...` mengatur apakah hasil baseline dipakai sebagai titik awal bersama untuk SA, Tabu Search, dan VNS.
+- Strategi default Local Search adalah First Improvement. Jika preprocessing tidak dicentang, ketiga metaheuristik menggunakan rute hasil constructive heuristic tanpa preprocessing.
