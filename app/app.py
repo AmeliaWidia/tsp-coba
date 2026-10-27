@@ -400,13 +400,12 @@ def card(label, value, sub=""):
 
 
 def chips(items):
-    html = "".join(
+    return '<div class="chips">' + "".join(
         f'<span class="chip {cls}">{key}'
         f'{"<b>" + str(value) + "</b>" if value != "" else ""}'
         '</span>'
         for key, value, cls in items
-    )
-    return f'<div class="chips">{html}</div>'
+    ) + "</div>"
 
 
 def sec(number, title, badge=""):
