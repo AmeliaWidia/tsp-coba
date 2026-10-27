@@ -1246,8 +1246,9 @@ st.markdown(
         ("shaking", vns_shaking, ""),
         ("local search", "ON" if vns_local_search else "OFF", on(vns_local_search)),
     ])
-    + (
-    )
+    + "</div>",
+    unsafe_allow_html=True,
+)
     + "</div>",
     unsafe_allow_html=True,
 )
