@@ -1033,8 +1033,8 @@ with st.expander(
             ),
         )
         st.info(
-            "Local Search tetap dilaporkan sebagai baseline tersendiri dengan operator yang dipilih. "
-            "Centang opsi di atas hanya jika ingin memakai hasilnya sebagai rute awal "
+            "Local Search dianggap sebagai baseline tersendiri dengan operator yang dipilih. "
+            "Centang opsi di atas jika ingin memakai hasilnya sebagai rute awal "
             "ketiga metaheuristik. Jika tidak dicentang, ketiganya mulai dari rute konstruktif asli."
         )
 
