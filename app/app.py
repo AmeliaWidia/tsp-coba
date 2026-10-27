@@ -17,6 +17,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "src"))
 
 from tsp_core import *
+from tsp_core import local_search  # Explicit import for the Local Search baseline
 
 MAX_CITIES = 200
 FONT = "Nunito Sans, Plus Jakarta Sans, system-ui, sans-serif"
@@ -994,12 +995,13 @@ with st.expander(
     with setting_tabs["Local Search"]:
         ls_operator = st.selectbox(
             "Operator Local Search",
-            ["2-opt", "3-opt", "2-opt + 3-opt"],
+            ["2-opt", "3-opt"],
             index=0,
             help=(
                 "2-opt menukar sambungan dua sisi. 3-opt memutus tiga sisi dan "
-                "menguji penyambungan ulang. Opsi gabungan memeriksa kedua neighborhood. "
-                "Untuk menjaga performa pada dataset besar, tiap pass membatasi evaluasi hingga 50.000 kandidat."
+                "menguji penyambungan ulang. Pilih satu operator agar perbandingan "
+                "mudah dijelaskan. Untuk menjaga performa pada dataset besar, tiap pass "
+                "membatasi evaluasi hingga 50.000 kandidat."
             ),
         )
         ls_strategy = st.selectbox(

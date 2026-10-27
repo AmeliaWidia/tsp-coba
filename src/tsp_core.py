@@ -173,7 +173,7 @@ def move_key(r, m):
 def _local_search_candidates(route, D, operator):
     """Yield (candidate_route, move_description, operator_name) for a neighborhood."""
     n = len(route)
-    operators = ["2-opt", "3-opt"] if operator == "2-opt + 3-opt" else [operator]
+    operators = [operator]
 
     for op in operators:
         if op == "2-opt":
@@ -215,7 +215,7 @@ def _local_search_candidates(route, D, operator):
 
 
 def local_search(r, D, strategy="First Improvement", operator="2-opt", max_pass=200, return_log=False, max_candidates_per_pass=50000):
-    """Local Search baseline with 2-opt, 3-opt, or combined neighborhoods.
+    """Local Search baseline with either a 2-opt or a 3-opt neighborhood.
 
     First Improvement accepts the first improving candidate encountered.
     Best Improvement scans the selected neighborhood(s) and accepts the best
@@ -226,7 +226,7 @@ def local_search(r, D, strategy="First Improvement", operator="2-opt", max_pass=
     log = []
     total_evaluations = 0
     stop_reason = "Batas iterasi maksimum tercapai"
-    valid_operators = {"2-opt", "3-opt", "2-opt + 3-opt"}
+    valid_operators = {"2-opt", "3-opt"}
     if operator not in valid_operators:
         raise ValueError(f"Operator Local Search tidak dikenal: {operator}")
     if strategy not in {"First Improvement", "Best Improvement"}:
