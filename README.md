@@ -1,5 +1,17 @@
 # TSP Metaheuristic: Simulated Annealing, Tabu Search, dan VNS
 
+## Rancangan perbandingan algoritma
+
+- Metode utama: Simulated Annealing (SA), Tabu Search (TS), dan VNS (sebagai metode tambahan).
+- Satu pengaturan **Max iterasi bersama** berada di sidebar dan digunakan oleh SA, TS, serta VNS.
+- Semua metode utama dimulai dari rute awal yang sama tanpa 2-opt awal.
+- **Local Search + 2-opt** dijalankan terpisah sebagai baseline pembanding.
+- Multi-run menampilkan hasil tiap run secara individual (seed, jarak awal/akhir, improvement, runtime, iterasi, dan evaluasi yang dilaporkan), serta ringkasan statistik.
+- Operator 3-opt tidak ditawarkan pada UI karena implementasi awalnya belum setara dengan definisi 3-opt standar; operator yang tersedia untuk SA/TS adalah Swap dan 2-opt.
+
+Catatan: jumlah iterasi yang sama tidak selalu berarti jumlah evaluasi kandidat yang sama. SA mengevaluasi satu kandidat per iterasi, sedangkan Tabu Search mengevaluasi sejumlah kandidat sesuai ukuran neighborhood.
+
+
 Aplikasi berbasis **Streamlit** untuk menyelesaikan permasalahan *Traveling Salesman Problem* (TSP) menggunakan tiga algoritma metaheuristik: **Simulated Annealing (SA), Tabu Search (TS), dan Variable Neighborhood Search (VNS)**.
 
 Aplikasi ini mendukung pembentukan solusi awal, optimasi rute, visualisasi, analisis konvergensi, perbandingan kinerja algoritma, dan pengujian berulang untuk mengevaluasi kualitas solusi serta waktu komputasi berdasarkan hasil aktual.

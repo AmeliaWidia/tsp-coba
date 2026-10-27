@@ -1,5 +1,5 @@
 
-"""Core TSP: distance, construction heuristics, local search, SA, TS, ILS, VNS."""
+"""Core TSP: distance, construction heuristics, local search, Simulated Annealing, Tabu Search, and VNS."""
 
 import time
 import numpy as np
@@ -133,35 +133,38 @@ def apply(r, m):
     if op == "2-opt":
         return r[:i] + r[i:j + 1][::-1] + r[j + 1:]
 
-    # 3-opt: segment exchange
-    return r[:i] + r[j:k] + r[i:j] + r[k:]
+    raise ValueError(f"Move operator tidak dikenal: {op}")
 
 
 def rand_move(n, op, rng):
-    if op == "3-opt":
-        i, j, k = sorted(rng.choice(n + 1, 3, replace=False))
-        return op, int(i), int(j), int(k)
-
+    if op not in ("Swap", "2-opt"):
+        raise ValueError(f"Move operator tidak dikenal: {op}")
+    if n < 2:
+        raise ValueError("Minimal dua kota diperlukan untuk membuat gerakan.")
     i, j = sorted(rng.choice(n, 2, replace=False))
     return op, int(i), int(j), 0
 
 
 def neighborhood(n, op, size, rng):
-    if op != "3-opt" and n * (n - 1) // 2 <= size:
-        return [
-            (op, i, j, 0)
-            for i in range(n)
-            for j in range(i + 1, n)
-        ]
-
-    return [rand_move(n, op, rng) for _ in range(size)]
+    if op not in ("Swap", "2-opt"):
+        raise ValueError(f"Move operator tidak dikenal: {op}")
+    all_moves = [
+        (op, i, j, 0)
+        for i in range(n)
+        for j in range(i + 1, n)
+    ]
+    if not all_moves:
+        return []
+    count = min(max(1, int(size)), len(all_moves))
+    if count == len(all_moves):
+        return all_moves
+    indices = rng.choice(len(all_moves), size=count, replace=False)
+    return [all_moves[int(i)] for i in indices]
 
 
 def move_key(r, m):
     op, i, j, k = m
     cities = [r[i], r[j]]
-    if op == "3-opt":
-        cities.append(r[k % len(r)])
     return op, tuple(sorted(cities))
 
 
@@ -230,7 +233,7 @@ def simulated_annealing(
     hist, log = [best_dist], []
     accepted = accepted_worse = best_updates = evals = 0
     iteration = 0
-    while iteration < int(max_iter) and temperature > Tmin_actual:
+    while iteration < int(max_iter):
         iteration += 1
         move = rand_move(len(r), op, rng)
         candidate = apply(current, move)
@@ -252,8 +255,14 @@ def simulated_annealing(
                     "Delta": delta, "Accepted": bool(take), "Current_Distance": current_dist,
                     "Best_Distance": best_dist, "Best_Updated": updated,
                     "Worse_Move_Accepted": bool(take and delta > 0)})
-        temperature *= alpha_used
-    reason = "Suhu minimum tercapai" if temperature <= Tmin_actual else "Batas iterasi bersama tercapai"
+        # Keep the shared iteration budget equal across SA, TS, and VNS.
+        # Once Tmin is reached, SA continues at Tmin until max_iter is consumed.
+        temperature = max(Tmin_actual, temperature * alpha_used)
+    reason = (
+        "Batas iterasi bersama tercapai; suhu minimum tercapai"
+        if temperature <= Tmin_actual
+        else "Batas iterasi bersama tercapai sebelum suhu minimum"
+    )
     return {"route": best, "dist": best_dist, "hist": hist, "log": log,
             "iters": iteration, "iterations": iteration, "evaluations": evals,
             "accepted": accepted, "accepted_worse": accepted_worse, "best_updates": best_updates,
@@ -267,33 +276,87 @@ def simulated_annealing(
 def tabu_search(
     r, D, max_iter=500, tabu_size=10, nbr_size=50, op="2-opt", aspiration=True, seed=0, detail=False,
 ):
-    """Tabu Search dengan waktu kedaluwarsa tabu dalam iterasi.
+    """Tabu Search dengan tenure berbasis iterasi dan log yang mudah diaudit.
 
-    Atribut gerakan yang baru saja dihapus/dilepas dari rute dilarang dibentuk
-    kembali selama tenure. Kandidat tabu hanya boleh diterima oleh aspiration
-    jika mengalahkan solusi terbaik global. Tidak ada fallback yang melanggar tabu.
+    Tabu List tetap menyimpan atribut gerakan (operator + pasangan kota), bukan
+    melarang kota dikunjungi. Log menyediakan tabel terstruktur agar UI tidak
+    perlu menampilkan representasi dictionary Python.
     """
     t0 = time.perf_counter()
     rng = np.random.default_rng(seed)
     current = list(r)
     current_dist = length(current, D)
     best, best_dist = current[:], current_dist
-    all_candidates = [(op, i, j, 0) for i in range(len(r)) for j in range(i+1, len(r))]
-    if op == "3-opt":
-        all_candidates = [rand_move(len(r), op, rng) for _ in range(max(100, int(nbr_size)*5))]
+    if op not in ("Swap", "2-opt"):
+        raise ValueError(f"Operator Tabu Search tidak dikenal: {op}")
+    all_candidates = [(op, i, j, 0) for i in range(len(r)) for j in range(i + 1, len(r))]
     if not all_candidates:
         raise ValueError("Tidak ada gerakan yang dapat dilakukan.")
+
     tenure = max(1, int(tabu_size))
-    tabu_expiry = {}
+    tabu_expiry = {}       # expiry = iterasi pertama saat atribut boleh dipakai lagi
+    tabu_started = {}      # iterasi saat atribut terakhir kali dimasukkan/diperpanjang
     hist, log = [best_dist], []
     evals = best_updates = skipped = aspiration_used = 0
-    for iteration in range(1, int(max_iter)+1):
-        expired = [key for key, expiry in tabu_expiry.items() if expiry <= iteration]
-        for key in expired:
+
+    def move_label(route, move):
+        operator, i, j, _ = move
+        a, b = int(route[i]) + 1, int(route[j]) + 1
+        return f"{operator} (node {a}, node {b})"
+
+    def tabu_rows(iteration_now):
+        rows = []
+        for key, expiry in sorted(tabu_expiry.items(), key=lambda item: (item[1], str(item[0]))):
+            operator, cities = key
+            nodes = [int(city) + 1 for city in cities]
+            rows.append({
+                "Atribut tabu": f"{operator} (node {nodes[0]}, node {nodes[1]})",
+                "Node 1": nodes[0],
+                "Node 2": nodes[1],
+                "Mulai tabu": int(tabu_started.get(key, max(1, expiry - tenure - 1))),
+                "Tabu sampai iterasi": int(expiry - 1),
+                "Boleh digunakan mulai": int(expiry),
+                "Sisa tenure": max(0, int(expiry) - int(iteration_now) - 1),
+                "Status": "Masih tabu" if expiry > iteration_now else "Kedaluwarsa",
+            })
+        return rows
+
+    def candidate_rows(candidates, chosen, current_before, iteration_now):
+        rows = []
+        for idx, item in enumerate(candidates, start=1):
+            move, route, dist, key, is_tabu, allowed_asp = item
+            rows.append({
+                "No.": idx,
+                "Gerakan": move_label(current_before, move),
+                "Jarak kandidat": round(float(dist), 6),
+                "Perubahan jarak": round(float(dist - length(current_before, D)), 6),
+                "Tabu?": "Ya" if is_tabu else "Tidak",
+                "Aspiration?": "Ya" if allowed_asp else "Tidak",
+                "Dipilih?": "Ya" if item is chosen else "Tidak",
+            })
+        return rows
+
+    for iteration in range(1, int(max_iter) + 1):
+        expired_keys = [key for key, expiry in tabu_expiry.items() if expiry <= iteration]
+        expired_rows = []
+        for key in expired_keys:
+            operator, cities = key
+            nodes = [int(city) + 1 for city in cities]
+            expired_rows.append({
+                "Atribut tabu": f"{operator} (node {nodes[0]}, node {nodes[1]})",
+                "Node 1": nodes[0], "Node 2": nodes[1],
+                "Mulai tabu": int(tabu_started.get(key, max(1, tabu_expiry[key] - tenure - 1))),
+                "Tabu sampai iterasi": int(tabu_expiry[key] - 1),
+                "Boleh digunakan mulai": int(tabu_expiry[key]),
+            })
             del tabu_expiry[key]
+            tabu_started.pop(key, None)
+
         count = min(max(1, int(nbr_size)), len(all_candidates))
         ids = rng.choice(len(all_candidates), size=count, replace=False)
         candidates = []
+        current_before = current[:]
+        current_before_dist = current_dist
         for idx in ids:
             move = all_candidates[int(idx)]
             route = apply(current, move)
@@ -303,22 +366,36 @@ def tabu_search(
             allowed_asp = bool(is_tabu and aspiration and dist < best_dist - 1e-12)
             candidates.append((move, route, dist, key, is_tabu, allowed_asp))
             evals += 1
+
         valid = [x for x in candidates if not x[4] or x[5]]
         chosen = min(valid, key=lambda x: x[2]) if valid else None
         if chosen is None:
             skipped += 1
             hist.append(best_dist)
-            log.append({"Iteration": iteration, "Selected_Move": "None (all candidates tabu)",
-                        "Current_Distance": current_dist, "Best_Distance": best_dist,
-                        "Candidates_Evaluated": count, "Tabu_Candidates": sum(x[4] for x in candidates),
-                        "Aspiration_Used": False, "Expired": str(expired),
-                        "Tabu_List": str({str(k): v for k,v in tabu_expiry.items()}),
-                        "Left": str(expired), "Best_Updated": False, "Status": "Skipped; no admissible move"})
+            log.append({
+                "Iteration": iteration,
+                "Selected_Move": "Tidak ada (semua kandidat tabu)",
+                "Current_Before": [x + 1 for x in current_before],
+                "Current_After": [x + 1 for x in current],
+                "Current_Distance": current_dist,
+                "Best_Distance": best_dist,
+                "Candidates_Evaluated": count,
+                "Tabu_Candidates": sum(x[4] for x in candidates),
+                "Aspiration_Used": False,
+                "Expired": expired_rows,
+                "Tabu_List": str({str(k): v for k, v in tabu_expiry.items()}),
+                "Tabu_List_Table": tabu_rows(iteration),
+                "Left": expired_rows,
+                "Candidates": candidate_rows(candidates, None, current_before, iteration),
+                "Best_Updated": False,
+                "Status": "Dilewati; tidak ada gerakan yang diizinkan",
+            })
             continue
+
         move, route, dist, key, is_tabu, used_asp = chosen
-        old_route, old_dist = current[:], current_dist
         current, current_dist = route, dist
-        # expiry means first iteration where the attribute is no longer tabu
+        # Atribut yang dipilih menjadi tabu selama `tenure` iterasi berikutnya.
+        tabu_started[key] = iteration
         tabu_expiry[key] = iteration + tenure + 1
         updated = current_dist < best_dist - 1e-12
         if updated:
@@ -326,20 +403,33 @@ def tabu_search(
             best_updates += 1
         aspiration_used += int(used_asp)
         hist.append(best_dist)
-        log.append({"Iteration": iteration, "Selected_Move": str(move[:3]),
-                    "Current_Before": [x+1 for x in old_route], "Current_After": [x+1 for x in current],
-                    "Current_Distance": current_dist, "Best_Distance": best_dist,
-                    "Candidates_Evaluated": count, "Tabu_Candidates": sum(x[4] for x in candidates),
-                    "Aspiration_Used": used_asp, "Tabu_List": str({str(k): v for k,v in tabu_expiry.items()}),
-                    "Left": str(expired), "Best_Updated": updated,
-                    "Candidates": [{"Move": str(x[0][:3]), "Distance": round(x[2],4),
-                                    "Tabu": "Yes" if x[4] else "No", "Aspiration": x[5],
-                                    "Selected": "✓" if x is chosen else ""} for x in candidates],
-                    "Status": "Aspiration" if used_asp else "Admissible best"})
-    return {"route": best, "dist": best_dist, "hist": hist, "log": log,
-            "iters": int(max_iter), "iterations": int(max_iter), "evaluations": evals,
-            "best_updates": best_updates, "skipped_iters": skipped, "aspiration_used": aspiration_used,
-            "time": time.perf_counter() - t0, "stop_reason": "Batas iterasi bersama tercapai"}
+        log.append({
+            "Iteration": iteration,
+            "Selected_Move": move_label(current_before, move),
+            "Current_Before": [x + 1 for x in current_before],
+            "Current_After": [x + 1 for x in current],
+            "Current_Distance": current_dist,
+            "Best_Distance": best_dist,
+            "Candidates_Evaluated": count,
+            "Tabu_Candidates": sum(x[4] for x in candidates),
+            "Aspiration_Used": bool(used_asp),
+            "Expired": expired_rows,
+            "Tabu_List": str({str(k): v for k, v in tabu_expiry.items()}),
+            "Tabu_List_Table": tabu_rows(iteration),
+            "Left": expired_rows,
+            "Candidates": candidate_rows(candidates, chosen, current_before, iteration),
+            "Best_Updated": bool(updated),
+            "Status": "Aspiration" if used_asp else "Gerakan yang diizinkan",
+        })
+
+    return {
+        "route": best, "dist": best_dist, "hist": hist, "log": log,
+        "iters": int(max_iter), "iterations": int(max_iter), "evaluations": evals,
+        "best_updates": best_updates, "skipped_iters": skipped,
+        "aspiration_used": aspiration_used,
+        "time": time.perf_counter() - t0,
+        "stop_reason": "Batas iterasi bersama tercapai",
+    }
 
 
 # ---------- Variable Neighborhood Search ----------
@@ -412,6 +502,7 @@ def variable_neighborhood_search(
     hist = [best_dist]
     log = []
     k = 0
+    best_updates = 0
 
     for iteration in range(1, max(0, int(max_iter)) + 1):
         operator = neighborhoods[k]
@@ -439,6 +530,7 @@ def variable_neighborhood_search(
             if current_dist < best_dist - 1e-12:
                 best = current[:]
                 best_dist = current_dist
+                best_updates += 1
 
             # Perbaikan: kembali ke neighborhood pertama.
             k = 0
@@ -464,5 +556,10 @@ def variable_neighborhood_search(
         "hist": hist,
         "log": log,
         "iters": len(log),
+        # One candidate-level evaluation per VNS iteration. Any evaluations
+        # performed internally by the optional 2-opt local search are not included.
+        "evaluations": len(log),
+        "best_updates": best_updates,
+        "stop_reason": "Batas iterasi bersama tercapai",
         "time": time.perf_counter() - t0,
     }

@@ -424,6 +424,14 @@ def on(value):
 
 sb = st.sidebar
 sb.markdown("### 🌸 Pengaturan dasar")
+sb.markdown("**Anggaran pencarian**")
+shared_max_iter = int(sb.number_input(
+    "Max iterasi bersama (SA, Tabu Search, VNS)",
+    min_value=10, max_value=1000000, value=3000, step=100,
+    help="Semua metode utama menggunakan batas iterasi yang sama."
+))
+sb.caption("Batas iterasi ini dipakai bersama oleh SA, Tabu Search, dan VNS.")
+sb.divider()
 sb.markdown("**Data kota**")
 
 method = sb.radio(
@@ -969,21 +977,16 @@ with st.expander(
 
 
     with setting_tabs["Local Search"]:
-        a, b = st.columns(2)
-
-        use_2opt = a.checkbox("2-opt pada solusi awal", True)
-        ls_after = a.checkbox(
-            "2-opt setelah SA/TS/VNS (polish)",
-            False,
-        )
-        ls_strategy = b.selectbox(
-            "Improvement strategy",
+        use_2opt = False
+        ls_after = False
+        ls_strategy = st.selectbox(
+            "Strategi Local Search + 2-opt",
             ["Best Improvement", "First Improvement"],
+            help="Metode ini dijalankan sebagai baseline terpisah, bukan sebelum SA/TS/VNS."
         )
-
-        st.caption(
-            "Operator SA dan TS dipilih pada pengaturan masing-masing. "
-            "VNS menggunakan neighborhood Swap, Insertion, dan 2-opt."
+        st.info(
+            "Local Search + 2-opt menjadi metode pembanding tersendiri. "
+            "SA, Tabu Search, dan VNS semuanya dimulai dari rute awal yang sama tanpa 2-opt awal."
         )
 
     with setting_tabs["Simulated Annealing"]:
@@ -1001,31 +1004,27 @@ with st.expander(
             "Minimum temperature", 1e-6, 1e5, 0.1,
             format="%.4f",
         )
-        shared_max_iter = b.number_input("Maximum iteration (SA & TS bersama)", 10, 1000000, 3000)
-        sa_per = 1  # kompatibilitas internal; SA mencoba satu kandidat per langkah
+        sa_per = 1  # parameter kompatibilitas; satu kandidat dievaluasi per iterasi
         sa_max = int(shared_max_iter)
-        sa_op = c.selectbox("Neighborhood SA", ["2-opt", "Swap", "3-opt"])
+        st.caption(f"Batas iterasi bersama: {int(shared_max_iter)}")
+        sa_op = c.selectbox("Neighborhood SA", ["2-opt", "Swap"], help="Memakai operator yang implementasinya digunakan dan diuji dalam proyek.")
 
     with setting_tabs["Tabu Search"]:
         a, b, c = st.columns(3)
 
         ts_max = int(shared_max_iter)
-        a.caption(f"Batas iterasi bersama SA & TS: {int(shared_max_iter)}")
+        a.caption(f"Batas iterasi bersama: {int(shared_max_iter)}")
         ts_size = b.number_input("Tabu size", 1, 1000, 10)
-        ts_nbr = c.number_input("Neighborhood size", 3, 5000, 50)
+        ts_nbr = c.number_input("Neighborhood size", 1, 20000, 50, help="Jumlah kandidat yang dievaluasi tiap iterasi. Setara jumlah seluruh gerakan yang mungkin untuk melihat seluruh neighborhood.")
 
-        ts_op = a.selectbox("Neighborhood TS", ["2-opt", "Swap", "3-opt"])
+        ts_op = a.selectbox("Neighborhood TS", ["2-opt", "Swap"], help="Memakai operator yang implementasinya digunakan dan diuji dalam proyek.")
         ts_asp = b.checkbox("Aspiration criterion", True)
 
     with setting_tabs["Variable Neighborhood Search (VNS)"]:
         a, b, c = st.columns(3)
 
-        vns_max = a.number_input(
-            "Maximum iteration VNS",
-            min_value=0,
-            max_value=100000,
-            value=500,
-        )
+        vns_max = int(shared_max_iter)
+        a.caption(f"Batas iterasi bersama: {int(shared_max_iter)}")
 
         vns_kmax = b.number_input(
             "Jumlah maksimum neighborhood (k_max)",
@@ -1153,6 +1152,7 @@ cfg = dict(
         bool(vns_local_search),
     ),
     runs=int(runs),
+    shared_max_iter=int(shared_max_iter),
 )
 
 out = ss.get("out")
@@ -1160,7 +1160,8 @@ out = ss.get("out")
 # Hapus hasil lama yang belum memiliki integrasi VNS.
 if out and (
     "VNS" not in out.get("R", {})
-    or "vns" not in out.get("cfg", {})
+    or "Local Search + 2-opt" not in out.get("R", {})
+    or "shared_max_iter" not in out.get("cfg", {})
 ):
     ss.pop("out", None)
     out = None
@@ -1215,9 +1216,9 @@ st.markdown(
         ("Simulated Annealing", "", "on"),
         ("Tabu Search", "", "on"),
         ("VNS", "", "on"),
-        ("2-opt awal", "ON" if use_2opt else "OFF", on(use_2opt)),
-        ("Polish", "ON" if ls_after else "OFF", on(ls_after)),
-        (ls_strategy, "", ""),
+        ("Baseline", "Local Search + 2-opt", "on"),
+        ("Strategi baseline", ls_strategy, ""),
+        ("Max iterasi bersama", int(shared_max_iter), "on"),
         ("Multi-run", f"{int(runs)}×", on(runs > 1)),
         ("Seed", int(seed), ""),
     ])
@@ -1226,7 +1227,6 @@ st.markdown(
         ("T0", sa_T0, ""),
         ("α", sa_alpha, ""),
         ("Tmin", sa_Tmin, ""),
-        ("iter/T", int(sa_per), ""),
         ("maxIter", int(sa_max), ""),
         ("operator", sa_op, ""),
     ])
@@ -1246,9 +1246,6 @@ st.markdown(
         ("shaking", vns_shaking, ""),
         ("local search", "ON" if vns_local_search else "OFF", on(vns_local_search)),
     ])
-    + "</div>",
-    unsafe_allow_html=True,
-)
     + "</div>",
     unsafe_allow_html=True,
 )
@@ -1314,7 +1311,7 @@ go_run = run_cols[0].button(
 )
 
 run_cols[1].caption(
-    f"Menjalankan SA, Tabu Search, dan VNS pada {n} kota"
+    f"Menjalankan SA, Tabu Search, VNS, dan Local Search + 2-opt sebagai baseline pada {n} kota"
    
     + (
         f", masing-masing {int(runs)} kali."
@@ -1323,41 +1320,28 @@ run_cols[1].caption(
 )
 
 if go_run:
-    init = init_preview
-    start = two_opt_ls(init, D, ls_strategy) if use_2opt else init
-
-    def polish(result):
-        if not ls_after:
-            return result
-
-        route = two_opt_ls(result["route"], D, ls_strategy)
-
-        return {
-            **result,
-            "route": route,
-            "dist": length(route, D),
-        }
+    init = list(init_preview)
+    start = init[:]  # SA, TS, VNS start from exactly the same unpolished route.
 
     def run_sa(run_seed):
-        return polish(simulated_annealing(
+        return simulated_annealing(
             start, D,
             sa_T0, sa_alpha, sa_Tmin,
             int(sa_per), int(sa_max),
             sa_op, run_seed,
-        ))
+        )
 
     def run_ts(run_seed):
-        return polish(tabu_search(
+        return tabu_search(
             start, D,
             int(ts_max), int(ts_size), int(ts_nbr),
             ts_op, ts_asp, run_seed,
-            detail=(n <= 12),
-        ))
+            detail=True,
+        )
 
     def run_vns(run_seed):
-        return polish(variable_neighborhood_search(
-            start,
-            D,
+        return variable_neighborhood_search(
+            start, D,
             max_iter=int(vns_max),
             k_max=int(vns_kmax),
             neighborhoods=vns_neighborhoods,
@@ -1365,47 +1349,43 @@ if go_run:
             local_search=vns_local_search,
             strategy=ls_strategy,
             seed=run_seed,
-        ))
+        )
 
-    with st.spinner("Menjalankan optimasi SA, TS, dan VNS..."):
+    # Local Search + 2-opt is a separate baseline, not preprocessing for SA/TS/VNS.
+    baseline_t0 = __import__("time").perf_counter()
+    baseline_route = two_opt_ls(init, D, ls_strategy)
+    baseline_time = __import__("time").perf_counter() - baseline_t0
+    baseline_dist = length(baseline_route, D)
+    baseline = {
+        "route": baseline_route, "dist": baseline_dist,
+        "hist": [length(init, D), baseline_dist], "log": [],
+        "iters": 0, "iterations": 0, "evaluations": 0,
+        "time": baseline_time, "stop_reason": "Local Search + 2-opt selesai",
+        "best_updates": int(baseline_dist < length(init, D) - 1e-12),
+    }
+
+    with st.spinner("Menjalankan SA, Tabu Search, VNS, dan baseline Local Search + 2-opt..."):
         R = {
+            "Local Search + 2-opt": baseline,
             "SA": run_sa(int(seed)),
             "Tabu Search": run_ts(int(seed)),
             "VNS": run_vns(int(seed)),
         }
 
         multi = None
-
-        if runs > 1:
-            runners = [
-                ("SA", run_sa),
-                ("Tabu Search", run_ts),
-                ("VNS", run_vns),
-            ]
-
+        if int(runs) > 1:
+            runners = [("SA", run_sa), ("Tabu Search", run_ts), ("VNS", run_vns)]
             multi = {
-                name: [
-                    function(int(seed) + i)
-                    for i in range(int(runs))
-                ]
+                name: [function(int(seed) + i) for i in range(int(runs))]
                 for name, function in runners
             }
 
     ss["out"] = {
-        "init": init,
-        "start": start,
-        "R": R,
-        "multi": multi,
-        "P": P.copy(),
-        "D": D.copy(),
-        "names": names[:],
-        "metric": metric,
-        "n": n,
-        "cfg": cfg.copy(),
+        "init": init, "start": start, "R": R, "multi": multi,
+        "P": P.copy(), "D": D.copy(), "names": names[:],
+        "metric": metric, "n": n, "cfg": cfg.copy(),
     }
-
     st.rerun()
-
 
 # ================= 4. HASIL OPTIMASI =================
 
@@ -1417,6 +1397,7 @@ if (
     or not np.array_equal(out["P"], P)
     or out["metric"] != metric
     or "VNS" not in out["R"]
+    or "Local Search + 2-opt" not in out["R"]
 ):
     sec(
         4,
@@ -1450,7 +1431,7 @@ if stale:
         "konfigurasi sebelumnya; tekan RUN untuk memperbarui."
     )
 
-use_2opt_result = result_cfg["use_2opt"]
+use_2opt_result = False  # 2-opt is a separate baseline, never preprocessing.
 cons_result = result_cfg["cons"]
 init_mode_result = result_cfg["init_mode"]
 ts_size_result = result_cfg["ts"]
@@ -1468,13 +1449,10 @@ ds = length(start, D)
 sa = R["SA"]
 ts = R["Tabu Search"]
 vns = R["VNS"]
+baseline = R["Local Search + 2-opt"]
 best_d = min(result["dist"] for result in R.values())
 
-routes = {
-    "Initial": init,
-    **({"Initial + 2-opt": start} if use_2opt_result else {}),
-    **{name: result["route"] for name, result in R.items()},
-}
+routes = {"Initial": init, **{name: result["route"] for name, result in R.items()}}
 
 labels = [
     "📊 Ringkasan",
@@ -1485,8 +1463,7 @@ labels = [
     "🧠 Analisis",
 ]
 
-if n <= 12:
-    labels.append("🔍 Tabu Explorer")
+labels.append("🔍 Tabu Explorer")
 
 if multi:
     labels.append("🎲 Multi-run")
@@ -1509,29 +1486,24 @@ with T["📊 Ringkasan"]:
     c3.metric("Peningkatan", f"{initial_improvement:.2f}%")
 
     rows = [{
-        "Metode": "Initial" + (" + 2-opt" if use_2opt_result else ""),
-        "Jarak Awal": d0,
-        "Jarak Akhir": ds,
-        "Improvement (%)": (
-            100 * (d0 - ds) / d0 if d0 > 1e-12 else 0.0
-        ),
-        "Runtime (s)": 0.0,
-        "Iterasi": 0,
+        "Metode": "Rute awal (baseline sebelum optimasi)",
+        "Jarak Awal": d0, "Jarak Akhir": d0,
+        "Improvement (%)": 0.0, "Runtime (s)": 0.0, "Iterasi": 0,
     }]
 
     for name, result in R.items():
         improvement = (
-            100 * (ds - result["dist"]) / ds
-            if ds > 1e-12 else 0.0
+            100 * (d0 - result["dist"]) / d0
+            if d0 > 1e-12 else 0.0
         )
 
         rows.append({
             "Metode": name,
-            "Jarak Awal": ds,
+            "Jarak Awal": d0,
             "Jarak Akhir": result["dist"],
             "Improvement (%)": improvement,
             "Runtime (s)": result["time"],
-            "Iterasi": result["iters"],
+            "Iterasi": result.get("iters", 0),
         })
 
     st.dataframe(
@@ -1564,42 +1536,45 @@ with T["🗺️ Rute"]:
 
 with T["⚔️ Perbandingan"]:
     st.caption(
-        "Garis berwarna menunjukkan edge yang berbeda. "
-        "Garis pink muda menunjukkan edge yang sama."
+        "Semua metode dimulai dari rute awal yang sama. Local Search + 2-opt "
+        "ditampilkan sebagai baseline terpisah; SA/TS/VNS tidak menerima hasil 2-opt sebagai input. "
+        "Garis berwarna menunjukkan edge yang berbeda, sedangkan garis pink muda menunjukkan edge yang sama."
     )
 
     pair_list = [
         ("SA", "Tabu Search", C["deep"]),
-        ("SA", "VNS", C["gold"]),
-        ("Tabu Search", "VNS", "#B5838D"),
+        ("SA", "Local Search + 2-opt", C["gold"]),
+        ("Tabu Search", "Local Search + 2-opt", "#B5838D"),
+        ("SA", "VNS", "#8C6BA8"),
+        ("Tabu Search", "VNS", C["gold"]),
     ]
 
-    pair_cols = st.columns(3)
-
-    for col, (name_a, name_b, color) in zip(pair_cols, pair_list):
-        fig, shared_count = fig_diff(
-            R[name_a]["route"],
-            R[name_b]["route"],
-            f"{name_a} vs {name_b}",
-            color,
-        )
-
-        with col:
-            st.pyplot(fig)
-
-            st.caption(
-                f"Edge yang sama: {shared_count} dari {n}. "
-                f"Selisih jarak: "
-                f"{abs(R[name_a]['dist'] - R[name_b]['dist']):.2f}."
+    for pair_start in range(0, len(pair_list), 2):
+        pair_cols = st.columns(2)
+        for col, (name_a, name_b, color) in zip(pair_cols, pair_list[pair_start:pair_start + 2]):
+            fig, shared_count = fig_diff(
+                R[name_a]["route"],
+                R[name_b]["route"],
+                f"{name_a} vs {name_b}",
+                color,
             )
 
-            st.download_button(
-                f"💾 Save {name_a} vs {name_b}",
-                png(fig),
-                f"comparison_{name_a}_{name_b}.png",
-                "image/png",
-                key=f"comparison_{name_a}_{name_b}",
-            )
+            with col:
+                st.pyplot(fig)
+
+                st.caption(
+                    f"Edge yang sama: {shared_count} dari {n}. "
+                    f"Selisih jarak: "
+                    f"{abs(R[name_a]['dist'] - R[name_b]['dist']):.2f}."
+                )
+
+                st.download_button(
+                    f"💾 Save {name_a} vs {name_b}",
+                    png(fig),
+                    f"comparison_{name_a}_{name_b}.png",
+                    "image/png",
+                    key=f"comparison_{name_a}_{name_b}",
+                )
 
 
 # ---------- Konvergensi ----------
@@ -1609,7 +1584,8 @@ with T["📈 Konvergensi"]:
 
     palette = [C["deep"], C["gold"], "#B5838D", "#8C6BA8"]
 
-    for (name, result), color in zip(R.items(), palette):
+    convergence_methods = [(name, result) for name, result in R.items() if name != "Local Search + 2-opt"]
+    for (name, result), color in zip(convergence_methods, palette):
         ax.plot(
             result["hist"],
             label=name,
@@ -1712,9 +1688,9 @@ with T["🧠 Analisis"]:
         )
 
     def improvement_text(result):
-        if ds <= eps:
+        if d0 <= eps:
             return "tidak terdefinisi karena jarak awal 0"
-        pct = 100 * (ds - result["dist"]) / ds
+        pct = 100 * (d0 - result["dist"]) / d0
         return f"{pct:.2f}% dari solusi awal"
 
     def shared_edge_count(name_a, name_b):
@@ -1747,10 +1723,7 @@ with T["🧠 Analisis"]:
         f"berjarak <b>{d0:.2f}</b>"
     )
 
-    if use_2opt_result:
-        initial_text += f"; setelah 2-opt menjadi <b>{ds:.2f}</b>."
-    else:
-        initial_text += "."
+    initial_text += ". SA, Tabu Search, dan VNS dimulai dari rute awal yang sama; Local Search + 2-opt dijalankan terpisah sebagai baseline."
 
     # Kartu 2 — Hasil SA, TS, dan VNS
     result_text = "; ".join(
@@ -1813,9 +1786,14 @@ with T["🧠 Analisis"]:
 
     # Kartu 5 — Iterasi saat best distance final tercapai
     iteration_text = "; ".join(
-        f"<b>{html.escape(name)}</b>: best distance final pertama kali "
-        f"tercapai pada iterasi {convergence_iteration(result)} "
-        f"dari {result['iters']} iterasi"
+        (
+            f"<b>{html.escape(name)}</b>: baseline deterministik, "
+            "tidak memakai iterasi metaheuristik"
+            if name == "Local Search + 2-opt" else
+            f"<b>{html.escape(name)}</b>: best distance final pertama kali "
+            f"tercapai pada iterasi {convergence_iteration(result)} "
+            f"dari {result.get('iters', 0)} iterasi"
+        )
         for name, result in R.items()
     ) + "."
 
@@ -1828,7 +1806,7 @@ with T["🧠 Analisis"]:
 
     cards = [
         ("↗", "Solusi awal", initial_text),
-        ("▥", "Hasil SA, TS, dan VNS", result_text),
+        ("▥", "Hasil metode dan baseline", result_text),
         ("⚖", "Perbandingan hasil", comparison_text),
         ("◷", "Waktu komputasi", runtime_text),
         ("↻", "Perbaikan solusi", iteration_text),
@@ -1895,43 +1873,67 @@ with T["🧠 Analisis"]:
 
 # ---------- Tabu Explorer ----------
 
-if n <= 12:
-    with T["🔍 Tabu Explorer"]:
-        ts_log = ts["log"]
+with T["🔍 Tabu Explorer"]:
+    ts_log = ts.get("log", [])
+    st.subheader("Tabu Search Explorer")
+    st.caption(
+        "Pilih iterasi untuk melihat semua kandidat yang benar-benar dievaluasi "
+        "pada iterasi tersebut, isi Tabu List aktif, serta atribut yang kedaluwarsa. "
+        "Jika Neighborhood size sama dengan jumlah seluruh gerakan yang mungkin, "
+        "tabel kandidat mencakup seluruh neighborhood; jika lebih kecil, tabel "
+        "menampilkan sampel yang dievaluasi algoritma."
+    )
 
-        if ts_log:
-            iteration = st.slider(
-                "Iterasi",
-                1,
-                len(ts_log),
-                1,
+    if ts_log:
+        iteration = st.slider("Pilih iterasi Tabu Search", 1, len(ts_log), min(1, len(ts_log)))
+        row = ts_log[iteration - 1]
+        metric_cols = st.columns(4)
+        metric_cols[0].metric("Iterasi", f"{iteration} / {len(ts_log)}")
+        metric_cols[1].metric("Jarak solusi saat ini", f"{float(row.get('Current_Distance', 0)):.4f}")
+        metric_cols[2].metric("Jarak terbaik", f"{float(row.get('Best_Distance', 0)):.4f}")
+        metric_cols[3].metric("Kandidat dievaluasi", int(row.get("Candidates_Evaluated", 0)))
+
+        st.markdown("#### Ringkasan gerakan")
+        st.write(f"**Gerakan dipilih:** {row.get('Selected_Move', 'Tidak ada')}")
+        st.write(f"**Status:** {row.get('Status', '-')}")
+        st.write(f"**Solusi terbaik diperbarui:** {'Ya' if row.get('Best_Updated') else 'Tidak'}")
+        st.write(f"**Aspiration criterion digunakan:** {'Ya' if row.get('Aspiration_Used') else 'Tidak'}")
+
+        st.markdown("#### Tabu List aktif")
+        active_rows = row.get("Tabu_List_Table", [])
+        if active_rows:
+            active_df = pd.DataFrame(active_rows)
+            st.dataframe(active_df, width="stretch", hide_index=True)
+        else:
+            st.info("Tidak ada atribut tabu yang aktif pada iterasi ini.")
+
+        expired_rows = row.get("Expired", [])
+        with st.expander("Lihat atribut tabu yang kedaluwarsa pada iterasi ini"):
+            if expired_rows:
+                st.dataframe(pd.DataFrame(expired_rows), width="stretch", hide_index=True)
+            else:
+                st.caption("Tidak ada atribut tabu yang kedaluwarsa pada iterasi ini.")
+
+        st.markdown("#### Neighborhood — kandidat yang dievaluasi")
+        candidates = row.get("Candidates", [])
+        if candidates:
+            candidate_df = pd.DataFrame(candidates)
+            st.dataframe(candidate_df, width="stretch", hide_index=True)
+            st.caption(f"Menampilkan {len(candidate_df)} kandidat yang diperiksa pada iterasi {iteration}.")
+            st.download_button(
+                "⬇️ Unduh kandidat iterasi ini (CSV)",
+                candidate_df.to_csv(index=False).encode("utf-8-sig"),
+                f"tabu_neighborhood_iterasi_{iteration}.csv",
+                "text/csv",
             )
+        else:
+            st.info("Tidak ada kandidat yang tercatat untuk iterasi ini.")
 
-            row = ts_log[iteration - 1]
-
-            st.write(
-                f"**Current:** "
-                f"{' → '.join(map(str, row.get('Current_Before', [])))} "
-                f"| **Tabu size:** {ts_size_result}"
-            )
-
-            st.dataframe(
-                pd.DataFrame(row.get("Candidates", [])),
-                width="stretch",
-                hide_index=True,
-            )
-
-            st.write(
-                f"**Move dipilih:** {row.get('Selected_Move', '-')}"
-                f" → rute baru "
-                f"{' → '.join(map(str, row.get('Current_After', [])))} "
-                f"(jarak {row.get('Current_Distance', '-')})"
-            )
-
-            st.write(
-                f"**Tabu list:** {row.get('Tabu_List', '-')}"
-                f" | keluar dari list: {row.get('Left', '-')}"
-            )
+        with st.expander("Lihat rute sebelum dan sesudah gerakan"):
+            st.write("**Rute sebelum:** " + " → ".join(map(str, row.get("Current_Before", []))))
+            st.write("**Rute sesudah:** " + " → ".join(map(str, row.get("Current_After", []))))
+    else:
+        st.info("Jalankan Tabu Search terlebih dahulu untuk melihat detail iterasi.")
 
 
 # ---------- Multi-run ----------
@@ -1964,15 +1966,24 @@ if multi:
                 detail_rows.append({
                     "Run": run_idx,
                     "Metode": method_name,
-                    "Seed": int(seed) + run_idx - 1,
+                    "Seed": int(result_cfg.get("seed", seed)) + run_idx - 1,
+                    "Jarak awal bersama": float(d0),
                     "Jarak akhir": float(item.get("dist", np.nan)),
-                    "Improvement dari rute awal (%)": (100 * (d0 - float(item.get("dist", d0))) / d0) if d0 else 0.0,
+                    "Improvement (jarak awal → akhir, %)": (100 * (d0 - float(item.get("dist", d0))) / d0) if d0 else 0.0,
                     "Iterasi aktual": item.get("iters", item.get("iterations", "—")),
                     "Runtime (detik)": float(item.get("time", 0.0)),
-                    "Evaluasi kandidat": item.get("evaluations", "—"),
+                    "Evaluasi kandidat": item.get("evaluations", item.get("iters", "—")),
+                    "Solusi terbaik diperbarui": item.get("best_updates", "—"),
+                    "Alasan berhenti": item.get("stop_reason", "batas iterasi"),
                 })
         detail_df = pd.DataFrame(detail_rows)
         st.subheader("Hasil setiap run")
+        st.caption(
+            "Setiap baris adalah satu percobaan algoritma. Run 1 menggunakan seed dasar; "
+            "Run 2 menggunakan seed dasar + 1, dan seterusnya. SA, Tabu Search, dan VNS "
+            "menggunakan rute awal yang sama pada setiap nomor run. Local Search + 2-opt "
+            "adalah baseline deterministik sehingga ditampilkan sekali pada Ringkasan, bukan diulang di sini."
+        )
         st.dataframe(detail_df.round(4), width="stretch", hide_index=True)
         st.download_button(
             "⬇️ Unduh detail setiap run (CSV)",
