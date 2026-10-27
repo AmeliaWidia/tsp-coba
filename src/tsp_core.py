@@ -1,4 +1,3 @@
-
 """Core TSP: distance, construction heuristics, local search, Simulated Annealing, Tabu Search, and VNS."""
 
 import time
