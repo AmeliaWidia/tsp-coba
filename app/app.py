@@ -1445,7 +1445,7 @@ if go_run:
     baseline = local_search(
         init, D, 
         strategy=ls_strategy, operator=ls_operator, 
-        max_pass=200, max_candidates_per_pass=50000,
+        max_pass=100, max_candidates_per_pass=25000,
         return_log=True)
     baseline["time"] = __import__("time").perf_counter() - baseline_t0
     baseline["best_updates"] = int(
