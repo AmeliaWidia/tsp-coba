@@ -36,7 +36,6 @@ def nearest_neighbor(D, s):
 
 def nearest_neighbor_variation(D, s):
     """Nearest Neighbor variation that extends either end of an open path.
-
     Start with node ``s``. At each step, connect the closest unvisited node
     to either the left or right endpoint of the current path. Ties are
     resolved deterministically by node index, then preferring the left end.
@@ -53,8 +52,6 @@ def nearest_neighbor_variation(D, s):
     unvisited = set(range(n)) - {int(s)}
 
     while unvisited:
-        # Tuple order makes ties deterministic: distance, city index,
-        # then endpoint (left=0 before right=1).
         candidates = []
         left_endpoint = route[0]
         right_endpoint = route[-1]
@@ -69,13 +66,8 @@ def nearest_neighbor_variation(D, s):
             route.append(city)
         unvisited.remove(city)
 
-    # The result is a closed TSP tour, so cyclic rotation preserves its edges.
-    # Rotate the representation back to the selected seed for consistent UI.
     seed_position = route.index(int(s))
     return route[seed_position:] + route[:seed_position]
-
-
-
 
 def insertion(D, s, kind, rng):
     """NI: nearest, CI: cheapest, FI: farthest, AI: arbitrary insertion."""
@@ -627,18 +619,33 @@ def variable_neighborhood_search(
             else neighborhood_index
         )
 
-        candidate = _vns_shake(
-            current, operator, rng, moves
-        )
+        # Simpan kondisi solusi sebelum shaking
+        current_before = current[:]
+        current_before_dist = current_dist
 
+        # Tahap 1: Shaking
+        shaken_candidate = _vns_shake(
+            current_before, operator, rng, moves
+        )
+        shaken_dist = length(shaken_candidate, D)
+
+        # Tahap 2: Local Search (opsional)
         if local_search:
-            candidate = two_opt_ls(candidate, D, strategy)
+            candidate = two_opt_ls(
+                shaken_candidate,
+                D,
+                strategy=strategy,
+            )
+        else:
+            candidate = shaken_candidate
 
         candidate_dist = length(candidate, D)
-        accepted = candidate_dist < current_dist - 1e-12
+
+        # Tahap 3: Evaluasi kandidat setelah local search
+        accepted = candidate_dist < current_before_dist - 1e-12
 
         if accepted:
-            current = candidate
+            current = candidate[:]
             current_dist = candidate_dist
 
             if current_dist < best_dist - 1e-12:
@@ -646,11 +653,15 @@ def variable_neighborhood_search(
                 best_dist = current_dist
                 best_updates += 1
 
-            # Perbaikan: kembali ke neighborhood pertama.
+            # Solusi membaik: mulai lagi dari neighborhood pertama.
             k = 0
         else:
-            # Tidak ada perbaikan: pindah ke neighborhood berikutnya.
-            k = (k + 1) % len(neighborhoods)
+            # Tidak membaik: lanjut ke neighborhood berikutnya.
+            k += 1
+
+            # Setelah seluruh neighborhood dicoba, mulai siklus baru.
+            if k >= len(neighborhoods):
+                k = 0
 
         hist.append(best_dist)
         log.append({
@@ -658,10 +669,18 @@ def variable_neighborhood_search(
             "Neighborhood": operator,
             "Neighborhood_Index": neighborhood_index,
             "Shaking_Moves": moves,
-            "Candidate_Distance": round(candidate_dist, 4),
+            "Current_Before_Shaking": round(current_before_dist, 4),
+            "Distance_After_Shaking": round(shaken_dist, 4),
+            "Distance_After_Local_Search": round(candidate_dist, 4),
+            "Improvement": round(current_before_dist - candidate_dist, 4),
             "Current_Distance": round(current_dist, 4),
             "Best_Distance": round(best_dist, 4),
             "Accepted": bool(accepted),
+            "Status": (
+                "Diterima: solusi membaik"
+                if accepted
+                else "Ditolak: kandidat tidak lebih baik"
+            ),
         })
 
     return {
