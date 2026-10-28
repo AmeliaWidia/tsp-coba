@@ -1425,7 +1425,7 @@ if go_run:
             start, D,
             int(ts_max), int(ts_size), int(ts_nbr),
             ts_op, ts_asp, run_seed,
-            detail=False,
+            detail=True,
         )
 
     def run_vns(run_seed):
@@ -1442,11 +1442,7 @@ if go_run:
 
     # Baseline Local Search always starts from the constructive route and records its log.
     baseline_t0 = __import__("time").perf_counter()
-    baseline = local_search(
-        init, D, 
-        strategy=ls_strategy, operator=ls_operator, 
-        max_pass=200, max_candidates_per_pass=50000,
-        return_log=True)
+    baseline = local_search(init, D, strategy=ls_strategy, operator=ls_operator, return_log=True)
     baseline["time"] = __import__("time").perf_counter() - baseline_t0
     baseline["best_updates"] = int(
         baseline["dist"] < length(init, D) - 1e-12
