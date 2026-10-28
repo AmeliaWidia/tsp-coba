@@ -1,4 +1,3 @@
-
 import io
 import os
 import sys
@@ -550,7 +549,7 @@ max_iter_mode = sb.radio(
 if max_iter_mode == "Sama untuk semua":
     shared_max_iter = int(sb.number_input(
         "Max iterasi bersama (SA, Tabu Search, VNS)",
-        min_value=10, max_value=1000000, value=3000, step=100,
+        min_value=10, max_value=1000000, value=10000, step=100,
         key="shared_max_iter_input",
     ))
     sa_max = ts_max = vns_max = shared_max_iter
@@ -1025,7 +1024,7 @@ with st.expander(
         )
         use_ls_initial = st.checkbox(
             "Gunakan hasil Local Search sebagai rute awal SA, Tabu Search, dan VNS",
-            value=False,
+            value=True,
             help=(
                 "Jika dicentang, constructive heuristic dijalankan terlebih dahulu, "
                 "lalu hasilnya diperbaiki dengan Local Search. Ketiga metode "
@@ -1046,7 +1045,7 @@ with st.expander(
         )
         sa_alpha = b.number_input(
             "Alpha (cooling rate)",
-            0.5, 0.9999, 0.995, 0.001,
+            0.5, 0.9999, 0.95, 0.001,
             format="%.4f",
         )
         sa_Tmin = c.number_input(
@@ -1069,7 +1068,7 @@ with st.expander(
             ))
         else:
             sa_max = int(shared_max_iter)
-            st.caption(f"Batas iterasi bersama: {sa_max}")
+            st.caption(f"Batas iterasi bersama: {sa_max} (Bisa diatur di Sidebar)")
         sa_op = c.selectbox("Neighborhood SA", ["2-opt", "Swap"], help="Memakai operator yang implementasinya digunakan dan diuji dalam proyek.")
 
     with setting_tabs["Tabu Search"]:
@@ -1082,11 +1081,18 @@ with st.expander(
             ))
         else:
             ts_max = int(shared_max_iter)
-            a.caption(f"Batas iterasi bersama: {ts_max}")
+            a.caption(f"Batas iterasi bersama: {ts_max} (Bisa diatur di Sidebar)")
         ts_size = b.number_input("Tabu size", 1, 1000, 10)
-        ts_nbr = c.number_input("Neighborhood size", 1, 20000, 50, help="Jumlah kandidat yang dievaluasi tiap iterasi. Setara jumlah seluruh gerakan yang mungkin untuk melihat seluruh neighborhood.")
+        if ts_size >= n:
+            st.warning(
+                "Tabu size terlalu besar. "
+                "Tabu size harus lebih kecil dari jumlah data/kota."
+            )
+        ts_nbr = c.number_input("Neighborhood size", 1, 20000, 50, 
+                                help="Jumlah kandidat yang dievaluasi tiap iterasi. Setara jumlah seluruh gerakan yang mungkin untuk melihat seluruh neighborhood.")
 
-        ts_op = a.selectbox("Neighborhood TS", ["2-opt", "Swap"], help="Memakai operator yang implementasinya digunakan dan diuji dalam proyek.")
+        ts_op = a.selectbox("Neighborhood TS", ["2-opt", "Swap"], 
+                            help="Memakai operator yang implementasinya digunakan dan diuji dalam proyek.")
         ts_asp = b.checkbox("Aspiration criterion", True)
 
     with setting_tabs["Variable Neighborhood Search (VNS)"]:
@@ -1099,7 +1105,7 @@ with st.expander(
             ))
         else:
             vns_max = int(shared_max_iter)
-            a.caption(f"Batas iterasi bersama: {vns_max}")
+            a.caption(f"Batas iterasi bersama: {vns_max} (Bisa diatur di Sidebar)")
 
         vns_kmax = b.number_input(
             "Jumlah maksimum neighborhood (k_max)",
