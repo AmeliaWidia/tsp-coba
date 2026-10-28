@@ -454,7 +454,7 @@ if method == "Klik kanvas X-Y":
     ch = sb.number_input("Tinggi kanvas (Y max)", 10, 10000, 100)
 
 elif method == "Generate acak":
-    n_rand = sb.number_input("Jumlah kota", 3, MAX_CITIES, 20)
+    n_rand = sb.number_input("Jumlah kota", 3, MAX_CITIES, 15)
     xr = sb.number_input("X max", 10, 10000, 100)
     yr = sb.number_input("Y max", 10, 10000, 100)
     sd = sb.number_input("Random seed data", 0, 99999, 42)
@@ -549,7 +549,7 @@ max_iter_mode = sb.radio(
 if max_iter_mode == "Sama untuk semua":
     shared_max_iter = int(sb.number_input(
         "Max iterasi bersama (SA, Tabu Search, VNS)",
-        min_value=10, max_value=1000000, value=10000, step=100,
+        min_value=10, max_value=1000000, value=7500, step=100,
         key="shared_max_iter_input",
     ))
     sa_max = ts_max = vns_max = shared_max_iter
