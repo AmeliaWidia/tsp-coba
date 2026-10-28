@@ -2010,7 +2010,7 @@ with T["🔍 Tabu Explorer"]:
             else:
                 st.caption("Tidak ada atribut tabu yang kedaluwarsa pada iterasi ini.")
 
-        st.markdown("#### Neighborhood — kandidat yang dievaluasi")
+        st.markdown("#### Neighborhood (kandidat yang dievaluasi)")
         candidates = row.get("Candidates", [])
         if candidates:
             candidate_df = pd.DataFrame(candidates)
