@@ -1127,7 +1127,15 @@ with st.expander(
         # Local Search preprocessing is controlled globally in the Local Search tab.
         # Keep VNS's post-shaking local-search component disabled to avoid a second,
         # overlapping checkbox with a different meaning.
-        vns_local_search = False
+        vns_local_search = st.checkbox(
+            "Gunakan Local Search setelah shaking",
+            value=True,
+            help=(
+                "Setelah shaking, kandidat diperbaiki dengan 2-opt Local Search "
+                "sebelum dibandingkan dengan solusi saat ini. Ini merupakan "
+                "tahap penting dalam VNS untuk mencari solusi yang lebih baik."
+            ),
+        )
 
 
     with setting_tabs["Multi-run & Seed"]:
