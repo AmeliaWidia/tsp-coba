@@ -35,12 +35,6 @@ def nearest_neighbor(D, s):
 
 
 def nearest_neighbor_variation(D, s):
-    """Nearest Neighbor variation that extends either end of an open path.
-    Start with node ``s``. At each step, connect the closest unvisited node
-    to either the left or right endpoint of the current path. Ties are
-    resolved deterministically by node index, then preferring the left end.
-    The returned route contains each node once; ``length`` closes the tour.
-    """
     D = np.asarray(D)
     n = len(D)
     if D.ndim != 2 or D.shape[0] != D.shape[1]:
@@ -542,8 +536,11 @@ def tabu_search(
 
 def _vns_shake(route, operator, rng, moves=1):
     """Menghasilkan kandidat melalui shaking pada neighborhood tertentu."""
-    candidate = route[:]
+    candidate = list(route)
     n = len(candidate)
+
+    if n < 2:
+        return candidate
 
     for _ in range(max(1, int(moves))):
         i, j = map(int, rng.choice(n, 2, replace=False))
@@ -566,7 +563,7 @@ def _vns_shake(route, operator, rng, moves=1):
 
     return candidate
 
-_local_search_fn = local_search
+
 def variable_neighborhood_search(
     r,
     D,
@@ -579,10 +576,12 @@ def variable_neighborhood_search(
     seed=0,
 ):
     """
-    Variable Neighborhood Search (VNS).
-
-    Menggunakan shaking, perpindahan neighborhood, dan optional 2-opt.
-    Seluruh jarak dihitung dengan matriks D yang diberikan.
+    VNS menggunakan alur algoritma versi lama:
+    1. Shaking.
+    2. Local Search opsional.
+    3. Terima kandidat jika lebih baik dari solusi saat ini.
+    4. Kembali ke neighborhood pertama jika membaik.
+    5. Pindah neighborhood jika tidak membaik.
     """
     t0 = time.perf_counter()
     rng = np.random.default_rng(seed)
@@ -600,8 +599,9 @@ def variable_neighborhood_search(
     k_max = max(1, min(int(k_max), len(neighborhoods)))
     neighborhoods = neighborhoods[:k_max]
 
-    current = r[:]
+    current = list(r)
     current_dist = length(current, D)
+
     best = current[:]
     best_dist = current_dist
 
@@ -619,34 +619,28 @@ def variable_neighborhood_search(
             else neighborhood_index
         )
 
-        # Simpan kondisi solusi sebelum shaking
+        # Simpan solusi sebelum shaking.
         current_before = current[:]
         current_before_dist = current_dist
 
-        # Tahap 1: Shaking
-        shaken_candidate = _vns_shake(
+        # Tahap 1: Shaking.
+        candidate = _vns_shake(
             current_before, operator, rng, moves
         )
-        shaken_dist = length(shaken_candidate, D)
+        shaken_dist = length(candidate, D)
 
-        # Tahap 2: Local Search (opsional)
+        # Tahap 2: Local Search dari core baru.
         if local_search:
-            candidate = _local_search_fn(
-                shaken_candidate,
+            candidate = two_opt_ls(
+                candidate,
                 D,
                 strategy=strategy,
-                operator="2-opt",
-                max_pass=1,
-                return_log=False,
-                max_candidates_per_pass=1000,
             )
-        else:
-            candidate = shaken_candidate
 
         candidate_dist = length(candidate, D)
 
-        # Tahap 3: Evaluasi kandidat setelah local search
-        accepted = candidate_dist < current_before_dist - 1e-12
+        # Tahap 3: Kriteria penerimaan VNS lama.
+        accepted = candidate_dist < current_dist - 1e-12
 
         if accepted:
             current = candidate[:]
@@ -657,26 +651,31 @@ def variable_neighborhood_search(
                 best_dist = current_dist
                 best_updates += 1
 
-            # Solusi membaik: mulai lagi dari neighborhood pertama.
+            # Perbaikan: kembali ke neighborhood pertama.
             k = 0
         else:
             # Tidak membaik: lanjut ke neighborhood berikutnya.
-            k += 1
-
-            # Setelah seluruh neighborhood dicoba, mulai siklus baru.
-            if k >= len(neighborhoods):
-                k = 0
+            k = (k + 1) % len(neighborhoods)
 
         hist.append(best_dist)
+
         log.append({
             "Iteration": iteration,
             "Neighborhood": operator,
             "Neighborhood_Index": neighborhood_index,
             "Shaking_Moves": moves,
-            "Current_Before_Shaking": round(current_before_dist, 4),
-            "Distance_After_Shaking": round(shaken_dist, 4),
-            "Distance_After_Local_Search": round(candidate_dist, 4),
-            "Improvement": round(current_before_dist - candidate_dist, 4),
+            "Current_Before_Shaking": round(
+                current_before_dist, 4
+            ),
+            "Distance_After_Shaking": round(
+                shaken_dist, 4
+            ),
+            "Distance_After_Local_Search": round(
+                candidate_dist, 4
+            ),
+            "Improvement": round(
+                current_before_dist - candidate_dist, 4
+            ),
             "Current_Distance": round(current_dist, 4),
             "Best_Distance": round(best_dist, 4),
             "Accepted": bool(accepted),
@@ -687,15 +686,16 @@ def variable_neighborhood_search(
             ),
         })
 
+    iterations = len(log)
+
     return {
         "route": best,
         "dist": best_dist,
         "hist": hist,
         "log": log,
-        "iters": len(log),
-        # One candidate-level evaluation per VNS iteration. Any evaluations
-        # performed internally by the optional 2-opt local search are not included.
-        "evaluations": len(log),
+        "iters": iterations,
+        "iterations": iterations,
+        "evaluations": iterations,
         "best_updates": best_updates,
         "stop_reason": "Batas iterasi bersama tercapai",
         "time": time.perf_counter() - t0,
