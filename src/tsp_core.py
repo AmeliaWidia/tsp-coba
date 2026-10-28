@@ -566,7 +566,7 @@ def _vns_shake(route, operator, rng, moves=1):
 
     return candidate
 
-
+_local_search_fn = local_search
 def variable_neighborhood_search(
     r,
     D,
@@ -631,10 +631,14 @@ def variable_neighborhood_search(
 
         # Tahap 2: Local Search (opsional)
         if local_search:
-            candidate = two_opt_ls(
+            candidate = _local_search_fn(
                 shaken_candidate,
                 D,
                 strategy=strategy,
+                operator="2-opt",
+                max_pass=1,
+                return_log=False,
+                max_candidates_per_pass=1000,
             )
         else:
             candidate = shaken_candidate
