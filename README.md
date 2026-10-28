@@ -5,12 +5,10 @@
 - Metode utama: Simulated Annealing (SA), Tabu Search (TS), dan VNS (sebagai metode tambahan).
 - Satu pengaturan **Max iterasi bersama** berada di sidebar dan digunakan oleh SA, TS, serta VNS.
 - Semua metode utama dimulai dari rute awal yang sama tanpa 2-opt awal.
-- **Local Search + 2-opt** dijalankan terpisah sebagai baseline pembanding.
+- **Local Search** dijalankan sebagai baseline sebelum metode metaheuristik.
 - Multi-run menampilkan hasil tiap run secara individual (seed, jarak awal/akhir, improvement, runtime, iterasi, dan evaluasi yang dilaporkan), serta ringkasan statistik.
-- Operator 3-opt tidak ditawarkan pada UI karena implementasi awalnya belum setara dengan definisi 3-opt standar; operator yang tersedia untuk SA/TS adalah Swap dan 2-opt.
 
 Catatan: jumlah iterasi yang sama tidak selalu berarti jumlah evaluasi kandidat yang sama. SA mengevaluasi satu kandidat per iterasi, sedangkan Tabu Search mengevaluasi sejumlah kandidat sesuai ukuran neighborhood.
-
 
 Aplikasi berbasis **Streamlit** untuk menyelesaikan permasalahan *Traveling Salesman Problem* (TSP) menggunakan tiga algoritma metaheuristik: **Simulated Annealing (SA), Tabu Search (TS), dan Variable Neighborhood Search (VNS)**.
 
@@ -21,7 +19,7 @@ Aplikasi ini mendukung pembentukan solusi awal, optimasi rute, visualisasi, anal
 - **Input Data:** menambahkan kota melalui klik kanvas X–Y, membuat koordinat acak, mengedit tabel secara manual, mengunggah CSV/Excel, dan menggunakan dataset contoh.
 - **Perhitungan Jarak:** memilih metrik Euclidean atau Manhattan.
 - **Pembentukan Solusi Awal:** menggunakan Nearest Neighbor (NN), Nearest Insertion (NI), Cheapest Insertion (CI), Farthest Insertion (FI), Arbitrary Insertion (AI), atau rute manual.
-- **Pencarian Lokal:** menerapkan 2-opt pada solusi awal atau melakukan perbaikan rute setelah optimasi.
+- **Pencarian Lokal:** menerapkan 2-opt dan 3-opt pada solusi awal atau melakukan perbaikan rute setelah optimasi.
 - **Simulated Annealing:** menerima solusi berdasarkan perubahan jarak, probabilitas Metropolis, dan penurunan suhu.
 - **Tabu Search:** mengeksplorasi solusi tetangga menggunakan tabu list FIFO dan kriteria aspirasi.
 - **Variable Neighborhood Search:** mengganti struktur lingkungan pencarian menggunakan Swap, Insertion, dan 2-opt, dilengkapi mekanisme pengguncangan solusi dan opsi pencarian lokal.
